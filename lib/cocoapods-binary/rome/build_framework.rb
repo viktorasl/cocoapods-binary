@@ -30,7 +30,7 @@ def build_for_iosish_platform(sandbox,
   # bitcode enabled
   other_options += ['BITCODE_GENERATION_MODE=bitcode'] if bitcode_enabled
   # make less arch to iphone simulator for faster build
-  custom_build_options_simulator += ['ARCHS=x86_64', 'ONLY_ACTIVE_ARCH=NO'] if simulator == 'iphonesimulator'
+  custom_build_options_simulator += []
 
   is_succeed, _ = xcodebuild(sandbox, target_label, device, deployment_target, other_options + custom_build_options)
   exit 1 unless is_succeed

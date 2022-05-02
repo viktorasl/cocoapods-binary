@@ -110,6 +110,48 @@ def xcodebuild(sandbox, target, sdk='macosx', deployment_target=nil, other_optio
   platform = PLATFORMS[sdk]
   args += Fourflusher::SimControl.new.destination(:oldest, platform, deployment_target) unless platform.nil?
   args += other_options
+  perform_xcodebuild(args)
+end
+
+def build_xcframework(sandbox,
+                      build_dir,
+                      output_path,
+                      target
+                      )
+
+  deployment_target = target.platform.deployment_target.to_s
+
+  target_label = target.label # name with platform if it's used in multiple platforms
+  Pod::UI.puts "Prebuilding #{target_label}..."
+
+  device = 'iphoneos'
+  simulator = 'iphonesimulator'
+  is_succeed, _ = xcodebuild_archive(sandbox, target_label, device)
+  exit 1 unless is_succeed
+  is_succeed, _ = xcodebuild_archive(sandbox, target_label, simulator)
+  exit 1 unless is_succeed
+
+  # paths
+  target_name = target.name # equals target.label, like "AFNeworking-iOS" when AFNetworking is used in multiple platforms.
+  module_name = target.product_module_name
+  device_archive_path = "#{build_dir}/#{CONFIGURATION}-#{device}/#{target_name}/#{module_name}.xcarchive"
+  simulator_archive_path = "#{build_dir}/#{CONFIGURATION}-#{simulator}/#{target_name}/#{module_name}.xcarchive"
+
+  is_succeed, _ = xcodebuild_create_xcframework(device_archive_path, simulator_archive_path, module_name)
+end
+
+def xcodebuild_archive(sandbox, target, sdk)
+  args = %W(archive -project #{sandbox.project_path.realdirpath} -scheme #{target} -configuration #{CONFIGURATION} -sdk #{sdk} SKIP_INSTALL=NO BUILD_LIBRARY_FOR_DISTRIBUTION=YES )
+  perform_xcodebuild(args)
+end
+
+def xcodebuild_create_xcframework(device_archive_path, simulator_archive_path, module_name)
+  framework_path = "/Products/Library/Frameworks/#{module_name}.framework"
+  args = %W(-create-xcframework -framework #{simulator_archive_path}#{framework_path} -framework #{device_archive_path}#{framework_path})
+  perform_xcodebuild(args)
+end
+
+def perform_xcodebuild(args)
   log = `xcodebuild #{args.join(" ")} 2>&1`
   exit_code = $?.exitstatus  # Process::Status
   is_succeed = (exit_code == 0)
@@ -132,8 +174,6 @@ def xcodebuild(sandbox, target, sdk='macosx', deployment_target=nil, other_optio
   end
   [is_succeed, log]
 end
-
-
 
 module Pod
   class Prebuild
@@ -159,7 +199,7 @@ module Pod
 
       # -- build the framework
       case target.platform.name
-      when :ios then build_for_iosish_platform(sandbox, build_dir, output_path, target, 'iphoneos', 'iphonesimulator', bitcode_enabled, custom_build_options, custom_build_options_simulator)
+      when :ios then build_xcframework(sandbox, build_dir, output_path, target)
       when :osx then xcodebuild(sandbox, target.label, 'macosx', nil, custom_build_options)
       # when :tvos then build_for_iosish_platform(sandbox, build_dir, target, 'appletvos', 'appletvsimulator')
       when :watchos then build_for_iosish_platform(sandbox, build_dir, output_path, target, 'watchos', 'watchsimulator', true, custom_build_options, custom_build_options_simulator)
